@@ -1,2 +1,0 @@
-# prueba
-proyecto de clase
