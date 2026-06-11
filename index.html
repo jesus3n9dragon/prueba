@@ -1,60 +1,175 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Examen</title>
-    <link rel="stylesheet" href="estilo.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini Angry Birds</title>
+
+<style>
+body{
+    margin:0;
+    overflow:hidden;
+    background:linear-gradient(#87CEEB,#dff6ff);
+}
+
+canvas{
+    display:block;
+    margin:auto;
+    background:#b7e07b;
+}
+
+h1{
+    position:absolute;
+    top:10px;
+    width:100%;
+    text-align:center;
+    color:white;
+    font-family:Arial;
+}
+</style>
 </head>
-<!-- cabecera -->
 <body>
-    <!-- contiene todo el html  -->
-     <div class="primera">
-        <div class="segunda">
-         <!-- contenedor de html -->
-        <h1>AQUINO GOD</h1>
-        <!-- titulo de la pagina web -->
-        <h2>Luis Eduardo Velasquez Condori</h2>
-        <!-- nombre del estudiante -->
-        </div>
-     </div>
-     <div class="tercera">
-         <div class="quinta">
-            <!-- contenedor de html -->
-            <a class="sexta" href="principal.html">Principal</a>
-            <!-- link para dirigirte a otra pagina -->
-         </div>
-         <div class="quinta">
-            <a class="sexta" href="imagenes.html">Imagenes</a>
-            <!-- link para dirigirte a otra pagina -->
-         </div>
-         <div class="quinta">
-            <a class="sexta" href="tablas.html">Tablas</a>
-            <!-- link para dirigirte a otra pagina -->
-         </div>
-         <div class="quinta">
-            <a class="sexta" href="formulario.html">Formulario</a>
-            <!-- link para dirigirte a otra pagina -->
-         </div>
-         <div class="quinta">
-            <a class="sexta" href="listas.html">Listas</a>
-            <!-- link para dirigirte a otra pagina -->
-         </div>
-         <div class="quinta">
-            <a class="sexta" href="multimedia.html">Multimedia</a>
-            <!-- link para dirigirte a otra pagina -->
-         </div>
-     </div>
-     <div class="novena"></div>
-     <footer class="septima">
-      <!-- pie de pagina web -->
-      <div class="octava">
-      <h3> © Todos los Derechos reservados no
-          pertenecen Luis Velasquez</h3>
-      <!-- los derechos de copyright -->
-      <h2>FACEBOOK         TWITTER           INSTAGRAM</h2>
-      <!-- redes sociales de la pagina -->
-      </div>   
-     </footer>
+
+<h1>Mini Angry Birds</h1>
+<canvas id="game" width="1000" height="500"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let bird = {
+    x:150,
+    y:350,
+    radius:20,
+    vx:0,
+    vy:0,
+    launched:false
+};
+
+const gravity = 0.4;
+
+let blocks = [
+    {x:750,y:370,w:50,h:100,alive:true},
+    {x:800,y:370,w:50,h:100,alive:true},
+    {x:775,y:270,w:50,h:100,alive:true}
+];
+
+let dragging = false;
+
+canvas.addEventListener("mousedown",(e)=>{
+    let rect = canvas.getBoundingClientRect();
+    let mx = e.clientX-rect.left;
+    let my = e.clientY-rect.top;
+
+    let dx = mx-bird.x;
+    let dy = my-bird.y;
+
+    if(Math.sqrt(dx*dx+dy*dy) < bird.radius){
+        dragging=true;
+    }
+});
+
+canvas.addEventListener("mousemove",(e)=>{
+    if(dragging){
+        let rect = canvas.getBoundingClientRect();
+        bird.x = e.clientX-rect.left;
+        bird.y = e.clientY-rect.top;
+    }
+});
+
+canvas.addEventListener("mouseup",()=>{
+    if(dragging){
+        dragging=false;
+
+        bird.vx=(150-bird.x)/5;
+        bird.vy=(350-bird.y)/5;
+
+        bird.launched=true;
+    }
+});
+
+function collision(circle, rect){
+    return (
+        circle.x + circle.radius > rect.x &&
+        circle.x - circle.radius < rect.x + rect.w &&
+        circle.y + circle.radius > rect.y &&
+        circle.y - circle.radius < rect.y + rect.h
+    );
+}
+
+function update(){
+
+    if(bird.launched){
+        bird.x += bird.vx;
+        bird.y += bird.vy;
+
+        bird.vy += gravity;
+
+        if(bird.y > 480){
+            bird.y = 480;
+            bird.vy *= -0.4;
+        }
+
+        blocks.forEach(block=>{
+            if(block.alive && collision(bird,block)){
+                block.alive=false;
+                bird.vx*=0.8;
+            }
+        });
+    }
+}
+
+function draw(){
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // suelo
+    ctx.fillStyle="#5fa83a";
+    ctx.fillRect(0,470,1000,30);
+
+    // catapulta
+    ctx.strokeStyle="#5c3b1e";
+    ctx.lineWidth=8;
+    ctx.beginPath();
+    ctx.moveTo(130,380);
+    ctx.lineTo(170,320);
+    ctx.stroke();
+
+    // banda elástica
+    if(!bird.launched){
+        ctx.strokeStyle="black";
+        ctx.beginPath();
+        ctx.moveTo(150,350);
+        ctx.lineTo(bird.x,bird.y);
+        ctx.stroke();
+    }
+
+    // pájaro
+    ctx.fillStyle="red";
+    ctx.beginPath();
+    ctx.arc(bird.x,bird.y,bird.radius,0,Math.PI*2);
+    ctx.fill();
+
+    // ojo
+    ctx.fillStyle="white";
+    ctx.beginPath();
+    ctx.arc(bird.x+7,bird.y-5,5,0,Math.PI*2);
+    ctx.fill();
+
+    // cajas
+    blocks.forEach(block=>{
+        if(block.alive){
+            ctx.fillStyle="#8B5A2B";
+            ctx.fillRect(block.x,block.y,block.w,block.h);
+        }
+    });
+
+    update();
+    requestAnimationFrame(draw);
+}
+
+draw();
+</script>
+
 </body>
 </html>
