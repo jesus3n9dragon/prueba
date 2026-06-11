@@ -2,175 +2,135 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mini Angry Birds</title>
-
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Angry Birds HTML</title>
 <style>
-body{
-    margin:0;
-    overflow:hidden;
-    background:linear-gradient(#87CEEB,#dff6ff);
-}
-
-canvas{
-    display:block;
-    margin:auto;
-    background:#b7e07b;
-}
-
-h1{
-    position:absolute;
-    top:10px;
-    width:100%;
-    text-align:center;
-    color:white;
-    font-family:Arial;
-}
+body{margin:0;background:#87CEEB;font-family:Arial;text-align:center}
+canvas{background:#cfefff;border:2px solid #333;display:block;margin:10px auto}
+button{padding:10px 20px;font-size:18px;cursor:pointer}
+#ui{color:#111}
 </style>
 </head>
 <body>
-
-<h1>Mini Angry Birds</h1>
-<canvas id="game" width="1000" height="500"></canvas>
+<h1>Angry Birds HTML</h1>
+<div id="ui">
+<button id="start">Jugar</button>
+<p id="msg">Elimina todos los cerdos para avanzar.</p>
+</div>
+<canvas id="game" width="900" height="500"></canvas>
 
 <script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+const msg=document.getElementById("msg");
 
-let bird = {
-    x:150,
-    y:350,
-    radius:20,
-    vx:0,
-    vy:0,
-    launched:false
-};
-
-const gravity = 0.4;
-
-let blocks = [
-    {x:750,y:370,w:50,h:100,alive:true},
-    {x:800,y:370,w:50,h:100,alive:true},
-    {x:775,y:270,w:50,h:100,alive:true}
+let level=0, started=false;
+const levels=[
+[{x:700,y:390,r:20},{x:780,y:390,r:20}],
+[{x:650,y:390,r:20},{x:730,y:390,r:20},{x:810,y:390,r:20},{x:770,y:330,r:20}]
 ];
 
-let dragging = false;
+let pigs=[];
+let bird={x:150,y:380,r:18,vx:0,vy:0};
+let dragging=false;
+let launched=false;
+const gravity=0.35;
 
-canvas.addEventListener("mousedown",(e)=>{
-    let rect = canvas.getBoundingClientRect();
-    let mx = e.clientX-rect.left;
-    let my = e.clientY-rect.top;
+function loadLevel(i){
+ pigs=JSON.parse(JSON.stringify(levels[i]));
+ bird={x:150,y:380,r:18,vx:0,vy:0};
+ launched=false;
+ msg.textContent="Nivel "+(i+1);
+}
 
-    let dx = mx-bird.x;
-    let dy = my-bird.y;
+document.getElementById("start").onclick=()=>{
+ started=true;
+ level=0;
+ loadLevel(0);
+};
 
-    if(Math.sqrt(dx*dx+dy*dy) < bird.radius){
-        dragging=true;
-    }
+canvas.addEventListener("mousedown",e=>{
+ if(!started||launched) return;
+ dragging=true;
 });
 
-canvas.addEventListener("mousemove",(e)=>{
-    if(dragging){
-        let rect = canvas.getBoundingClientRect();
-        bird.x = e.clientX-rect.left;
-        bird.y = e.clientY-rect.top;
-    }
+canvas.addEventListener("mousemove",e=>{
+ if(!dragging) return;
+ const rect=canvas.getBoundingClientRect();
+ bird.x=e.clientX-rect.left;
+ bird.y=e.clientY-rect.top;
 });
 
 canvas.addEventListener("mouseup",()=>{
-    if(dragging){
-        dragging=false;
-
-        bird.vx=(150-bird.x)/5;
-        bird.vy=(350-bird.y)/5;
-
-        bird.launched=true;
-    }
+ if(!dragging) return;
+ dragging=false;
+ bird.vx=(150-bird.x)*0.18;
+ bird.vy=(380-bird.y)*0.18;
+ launched=true;
 });
 
-function collision(circle, rect){
-    return (
-        circle.x + circle.radius > rect.x &&
-        circle.x - circle.radius < rect.x + rect.w &&
-        circle.y + circle.radius > rect.y &&
-        circle.y - circle.radius < rect.y + rect.h
-    );
-}
-
 function update(){
+ if(launched){
+   bird.vy+=gravity;
+   bird.x+=bird.vx;
+   bird.y+=bird.vy;
 
-    if(bird.launched){
-        bird.x += bird.vx;
-        bird.y += bird.vy;
+   pigs=pigs.filter(p=>{
+      const dx=bird.x-p.x;
+      const dy=bird.y-p.y;
+      return Math.hypot(dx,dy)>bird.r+p.r;
+   });
 
-        bird.vy += gravity;
+   if(bird.y>470){
+      bird.y=470;
+      bird.vy*=-0.4;
+      bird.vx*=0.9;
+   }
+ }
 
-        if(bird.y > 480){
-            bird.y = 480;
-            bird.vy *= -0.4;
-        }
-
-        blocks.forEach(block=>{
-            if(block.alive && collision(bird,block)){
-                block.alive=false;
-                bird.vx*=0.8;
-            }
-        });
+ if(pigs.length===0 && started){
+    level++;
+    if(level<levels.length){
+       loadLevel(level);
+    }else{
+       msg.textContent="¡Ganaste todos los niveles!";
+       started=false;
     }
+ }
 }
 
 function draw(){
+ ctx.clearRect(0,0,900,500);
 
-    ctx.clearRect(0,0,canvas.width,canvas.height);
+ ctx.fillStyle="#6ab04c";
+ ctx.fillRect(0,450,900,50);
 
-    // suelo
-    ctx.fillStyle="#5fa83a";
-    ctx.fillRect(0,470,1000,30);
+ ctx.strokeStyle="#654321";
+ ctx.lineWidth=8;
+ ctx.beginPath();
+ ctx.moveTo(130,420);
+ ctx.lineTo(150,350);
+ ctx.stroke();
 
-    // catapulta
-    ctx.strokeStyle="#5c3b1e";
-    ctx.lineWidth=8;
-    ctx.beginPath();
-    ctx.moveTo(130,380);
-    ctx.lineTo(170,320);
-    ctx.stroke();
+ ctx.fillStyle="red";
+ ctx.beginPath();
+ ctx.arc(bird.x,bird.y,bird.r,0,Math.PI*2);
+ ctx.fill();
 
-    // banda elástica
-    if(!bird.launched){
-        ctx.strokeStyle="black";
-        ctx.beginPath();
-        ctx.moveTo(150,350);
-        ctx.lineTo(bird.x,bird.y);
-        ctx.stroke();
-    }
-
-    // pájaro
-    ctx.fillStyle="red";
-    ctx.beginPath();
-    ctx.arc(bird.x,bird.y,bird.radius,0,Math.PI*2);
-    ctx.fill();
-
-    // ojo
-    ctx.fillStyle="white";
-    ctx.beginPath();
-    ctx.arc(bird.x+7,bird.y-5,5,0,Math.PI*2);
-    ctx.fill();
-
-    // cajas
-    blocks.forEach(block=>{
-        if(block.alive){
-            ctx.fillStyle="#8B5A2B";
-            ctx.fillRect(block.x,block.y,block.w,block.h);
-        }
-    });
-
-    update();
-    requestAnimationFrame(draw);
+ pigs.forEach(p=>{
+   ctx.fillStyle="green";
+   ctx.beginPath();
+   ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+   ctx.fill();
+ });
 }
 
-draw();
+function loop(){
+ update();
+ draw();
+ requestAnimationFrame(loop);
+}
+loop();
 </script>
-
 </body>
 </html>
-
