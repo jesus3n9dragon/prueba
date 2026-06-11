@@ -2,136 +2,483 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Angry Birds HTML</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Angry Birds</title>
 <style>
-body{margin:0;background:#87CEEB;font-family:Arial;text-align:center}
-canvas{background:#cfefff;border:2px solid #333;display:block;margin:10px auto}
-button{padding:10px 20px;font-size:18px;cursor:pointer}
-#ui{color:#111}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#87CEEB;font-family:'Arial',sans-serif;overflow:hidden}
+#gameCanvas{display:block;cursor:crosshair}
+#ui{position:absolute;top:0;left:0;width:100%;pointer-events:none}
+#score{position:absolute;top:10px;right:15px;font-size:22px;font-weight:bold;color:#fff;text-shadow:2px 2px 4px #000}
+#level{position:absolute;top:10px;left:15px;font-size:22px;font-weight:bold;color:#fff;text-shadow:2px 2px 4px #000}
+#birds{position:absolute;bottom:70px;left:15px;font-size:18px;color:#fff;text-shadow:1px 1px 3px #000}
+#screen{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(180deg,#87CEEB 0%,#90EE90 70%,#5a3a00 100%)}
+#screen h1{font-size:52px;color:#e74c3c;text-shadow:3px 3px 0 #8B0000,5px 5px 0 rgba(0,0,0,0.3);margin-bottom:10px;letter-spacing:2px}
+#screen p{font-size:20px;color:#fff;text-shadow:1px 1px 3px #000;margin-bottom:30px}
+#screen button{font-size:22px;padding:14px 40px;background:linear-gradient(135deg,#f39c12,#e74c3c);color:#fff;border:none;border-radius:30px;cursor:pointer;box-shadow:0 4px 15px rgba(0,0,0,0.4);transition:transform 0.1s}
+#screen button:hover{transform:scale(1.05)}
+#screen .birds-preview{font-size:48px;margin-bottom:20px}
+#msgBox{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.85);color:#fff;padding:30px 50px;border-radius:16px;text-align:center;display:none;border:2px solid #f39c12}
+#msgBox h2{font-size:32px;margin-bottom:10px;color:#f39c12}
+#msgBox p{font-size:18px;margin-bottom:20px}
+#msgBox button{font-size:18px;padding:10px 30px;background:#e74c3c;color:#fff;border:none;border-radius:20px;cursor:pointer;margin:5px}
+#msgBox button:hover{background:#c0392b}
 </style>
 </head>
 <body>
-<h1>Angry Birds HTML</h1>
-<div id="ui">
-<button id="start">Jugar</button>
-<p id="msg">Elimina todos los cerdos para avanzar.</p>
+
+<div id="screen">
+  <div class="birds-preview">🐦🐦🐦</div>
+  <h1>Angry Birds</h1>
+  <p>🐷 ¡Los cerdos robaron los huevos! ¡Venganza! 🐷</p>
+  <p style="font-size:16px;color:#ffe;margin-bottom:20px">Arrastra el pájaro para apuntar y suelta para disparar</p>
+  <button onclick="startGame()">▶ ¡JUGAR!</button>
 </div>
-<canvas id="game" width="900" height="500"></canvas>
+
+<canvas id="gameCanvas" style="display:none"></canvas>
+<div id="ui" style="display:none">
+  <div id="score">Puntos: 0</div>
+  <div id="level">Nivel 1</div>
+  <div id="birds">🐦 Pájaros: 3</div>
+</div>
+<div id="msgBox">
+  <h2 id="msgTitle">¡Nivel Completado!</h2>
+  <p id="msgText">Pasas al siguiente nivel</p>
+  <button id="msgBtn" onclick="nextAction()">Continuar</button>
+</div>
 
 <script>
-const canvas=document.getElementById("game");
-const ctx=canvas.getContext("2d");
-const msg=document.getElementById("msg");
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
 
-let level=0, started=false;
-const levels=[
-[{x:700,y:390,r:20},{x:780,y:390,r:20}],
-[{x:650,y:390,r:20},{x:730,y:390,r:20},{x:810,y:390,r:20},{x:770,y:330,r:20}]
-];
+let W, H, state = 'menu', score = 0, level = 1;
+let birds = [], pigs = [], blocks = [], particles = [];
+let currentBird = null, slingshot = {x:0,y:0};
+let dragging = false, dragX = 0, dragY = 0;
+let birdsLeft = 3, fired = false, birdInFlight = null;
+let trajectory = [];
+let msgAction = '';
+let animId;
+let groundY;
 
-let pigs=[];
-let bird={x:150,y:380,r:18,vx:0,vy:0};
-let dragging=false;
-let launched=false;
-const gravity=0.35;
-
-function loadLevel(i){
- pigs=JSON.parse(JSON.stringify(levels[i]));
- bird={x:150,y:380,r:18,vx:0,vy:0};
- launched=false;
- msg.textContent="Nivel "+(i+1);
+function resize(){
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  groundY = H - 80;
 }
 
-document.getElementById("start").onclick=()=>{
- started=true;
- level=0;
- loadLevel(0);
-};
+function startGame(){
+  document.getElementById('screen').style.display='none';
+  canvas.style.display='block';
+  document.getElementById('ui').style.display='block';
+  resize();
+  level = 1;
+  score = 0;
+  loadLevel(1);
+  if(animId) cancelAnimationFrame(animId);
+  loop();
+}
 
-canvas.addEventListener("mousedown",e=>{
- if(!started||launched) return;
- dragging=true;
+function loadLevel(lv){
+  birds = [];
+  pigs = [];
+  blocks = [];
+  particles = [];
+  fired = false;
+  birdInFlight = null;
+  slingshot = {x: W*0.18, y: groundY - 80};
+
+  if(lv === 1){
+    birdsLeft = 3;
+    pigs = [
+      {x:W*0.65, y:groundY-25, r:22, hp:2, dead:false, wobble:0},
+      {x:W*0.80, y:groundY-25, r:22, hp:2, dead:false, wobble:0},
+    ];
+    blocks = [
+      {x:W*0.60, y:groundY-60, w:12, h:60, hp:3, mat:'wood'},
+      {x:W*0.70, y:groundY-60, w:12, h:60, hp:3, mat:'wood'},
+      {x:W*0.59, y:groundY-65, w:126, h:12, hp:3, mat:'wood'},
+      {x:W*0.75, y:groundY-60, w:12, h:60, hp:3, mat:'wood'},
+      {x:W*0.85, y:groundY-60, w:12, h:60, hp:3, mat:'wood'},
+      {x:W*0.74, y:groundY-65, w:126, h:12, hp:3, mat:'wood'},
+    ];
+  } else {
+    birdsLeft = 4;
+    pigs = [
+      {x:W*0.58, y:groundY-25, r:22, hp:3, dead:false, wobble:0},
+      {x:W*0.72, y:groundY-60, r:22, hp:3, dead:false, wobble:0},
+      {x:W*0.85, y:groundY-25, r:22, hp:3, dead:false, wobble:0},
+    ];
+    blocks = [
+      {x:W*0.53, y:groundY-60, w:12, h:60, hp:4, mat:'stone'},
+      {x:W*0.64, y:groundY-60, w:12, h:60, hp:4, mat:'stone'},
+      {x:W*0.52, y:groundY-65, w:138, h:12, hp:4, mat:'stone'},
+      {x:W*0.67, y:groundY-110, w:12, h:50, hp:4, mat:'stone'},
+      {x:W*0.77, y:groundY-110, w:12, h:50, hp:4, mat:'stone'},
+      {x:W*0.66, y:groundY-115, w:126, h:12, hp:4, mat:'stone'},
+      {x:W*0.80, y:groundY-60, w:12, h:60, hp:4, mat:'stone'},
+      {x:W*0.91, y:groundY-60, w:12, h:60, hp:4, mat:'stone'},
+      {x:W*0.79, y:groundY-65, w:126, h:12, hp:4, mat:'stone'},
+    ];
+  }
+  spawnNextBird();
+  updateUI();
+}
+
+function spawnNextBird(){
+  if(birdsLeft <= 0) return;
+  currentBird = {
+    x: slingshot.x, y: slingshot.y - 20,
+    vx:0, vy:0, r:18,
+    onSling:true, alive:true,
+    type: level===2 ? (birdsLeft%2===0?'bomb':'red') : 'red',
+    trail:[]
+  };
+}
+
+function updateUI(){
+  document.getElementById('score').textContent = 'Puntos: '+score;
+  document.getElementById('level').textContent = 'Nivel '+level;
+  let bStr = '';
+  for(let i=0;i<birdsLeft;i++) bStr += (level===2&&i%2===0)?'💣':'🐦';
+  document.getElementById('birds').textContent = 'Pájaros: '+bStr;
+}
+
+let mouse = {x:0,y:0,down:false};
+canvas.addEventListener('mousedown',e=>{
+  let r = canvas.getBoundingClientRect();
+  mouse.x=e.clientX-r.left; mouse.y=e.clientY-r.top; mouse.down=true;
+  if(currentBird&&currentBird.onSling){
+    let dx=mouse.x-currentBird.x, dy=mouse.y-currentBird.y;
+    if(Math.sqrt(dx*dx+dy*dy)<40) dragging=true;
+  }
 });
-
-canvas.addEventListener("mousemove",e=>{
- if(!dragging) return;
- const rect=canvas.getBoundingClientRect();
- bird.x=e.clientX-rect.left;
- bird.y=e.clientY-rect.top;
+canvas.addEventListener('mousemove',e=>{
+  let r=canvas.getBoundingClientRect();
+  mouse.x=e.clientX-r.left; mouse.y=e.clientY-r.top;
+  if(dragging&&currentBird){
+    let dx=mouse.x-slingshot.x, dy=mouse.y-(slingshot.y-20);
+    let dist=Math.sqrt(dx*dx+dy*dy);
+    let maxPull=80;
+    if(dist>maxPull){dx=dx/dist*maxPull;dy=dy/dist*maxPull;}
+    currentBird.x=slingshot.x+dx;
+    currentBird.y=slingshot.y-20+dy;
+    trajectory = calcTrajectory(currentBird.x, currentBird.y,
+      (slingshot.x-currentBird.x)*0.3, (slingshot.y-20-currentBird.y)*0.3);
+  }
 });
-
-canvas.addEventListener("mouseup",()=>{
- if(!dragging) return;
- dragging=false;
- bird.vx=(150-bird.x)*0.18;
- bird.vy=(380-bird.y)*0.18;
- launched=true;
-});
-
-function update(){
- if(launched){
-   bird.vy+=gravity;
-   bird.x+=bird.vx;
-   bird.y+=bird.vy;
-
-   pigs=pigs.filter(p=>{
-      const dx=bird.x-p.x;
-      const dy=bird.y-p.y;
-      return Math.hypot(dx,dy)>bird.r+p.r;
-   });
-
-   if(bird.y>470){
-      bird.y=470;
-      bird.vy*=-0.4;
-      bird.vx*=0.9;
-   }
- }
-
- if(pigs.length===0 && started){
-    level++;
-    if(level<levels.length){
-       loadLevel(level);
-    }else{
-       msg.textContent="¡Ganaste todos los niveles!";
-       started=false;
+canvas.addEventListener('mouseup',e=>{
+  if(dragging&&currentBird&&currentBird.onSling){
+    let vx=(slingshot.x-currentBird.x)*0.3;
+    let vy=(slingshot.y-20-currentBird.y)*0.3;
+    if(Math.abs(vx)>1||Math.abs(vy)>1){
+      currentBird.vx=vx; currentBird.vy=vy;
+      currentBird.onSling=false;
+      birdInFlight=currentBird;
+      currentBird=null;
+      birdsLeft--;
+      fired=true;
+      trajectory=[];
+      updateUI();
     }
- }
+  }
+  dragging=false; mouse.down=false;
+});
+canvas.addEventListener('touchstart',e=>{e.preventDefault();let t=e.touches[0];let r=canvas.getBoundingClientRect();mouse.x=t.clientX-r.left;mouse.y=t.clientY-r.top;mouse.down=true;if(currentBird&&currentBird.onSling){let dx=mouse.x-currentBird.x,dy=mouse.y-currentBird.y;if(Math.sqrt(dx*dx+dy*dy)<50)dragging=true;}},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();let t=e.touches[0];let r=canvas.getBoundingClientRect();mouse.x=t.clientX-r.left;mouse.y=t.clientY-r.top;if(dragging&&currentBird){let dx=mouse.x-slingshot.x,dy=mouse.y-(slingshot.y-20);let dist=Math.sqrt(dx*dx+dy*dy),maxPull=80;if(dist>maxPull){dx=dx/dist*maxPull;dy=dy/dist*maxPull;}currentBird.x=slingshot.x+dx;currentBird.y=slingshot.y-20+dy;trajectory=calcTrajectory(currentBird.x,currentBird.y,(slingshot.x-currentBird.x)*0.3,(slingshot.y-20-currentBird.y)*0.3);}},{passive:false});
+canvas.addEventListener('touchend',e=>{if(dragging&&currentBird&&currentBird.onSling){let vx=(slingshot.x-currentBird.x)*0.3;let vy=(slingshot.y-20-currentBird.y)*0.3;if(Math.abs(vx)>1||Math.abs(vy)>1){currentBird.vx=vx;currentBird.vy=vy;currentBird.onSling=false;birdInFlight=currentBird;currentBird=null;birdsLeft--;fired=true;trajectory=[];updateUI();}}dragging=false;mouse.down=false;});
+
+function calcTrajectory(sx,sy,vx,vy){
+  let pts=[];
+  let x=sx,y=sy,tx=vx,ty=vy;
+  for(let i=0;i<40;i++){
+    pts.push({x,y});
+    x+=tx; y+=ty; ty+=0.4;
+    if(y>groundY) break;
+  }
+  return pts;
+}
+
+function spawnParticles(x,y,color,n){
+  for(let i=0;i<n;i++){
+    let a=Math.random()*Math.PI*2, s=2+Math.random()*4;
+    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-2,life:1,color});
+  }
+}
+
+let checkTimer = 0;
+function update(){
+  let g=0.4;
+  if(birdInFlight&&birdInFlight.alive){
+    let b=birdInFlight;
+    b.trail.push({x:b.x,y:b.y});
+    if(b.trail.length>15) b.trail.shift();
+    b.vy+=g; b.x+=b.vx; b.y+=b.vy;
+    if(b.x>W+50||b.x<-50||b.y>H+50){b.alive=false;birdInFlight=null;checkNextOrEnd();return;}
+    if(b.y>=groundY-b.r){b.y=groundY-b.r;spawnParticles(b.x,b.y,'#e74c3c',8);b.alive=false;birdInFlight=null;checkNextOrEnd();return;}
+    blocks.forEach(bl=>{
+      if(bl.hp<=0) return;
+      if(b.x+b.r>bl.x&&b.x-b.r<bl.x+bl.w&&b.y+b.r>bl.y&&b.y-b.r<bl.y+bl.h){
+        let dmg=b.type==='bomb'?3:1;
+        bl.hp-=dmg; score+=50;
+        spawnParticles(b.x,b.y,bl.mat==='stone'?'#aaa':'#8B4513',10);
+        b.vx*=-0.3; b.vy*=-0.5;
+        if(bl.hp<=0){score+=100;spawnParticles(bl.x+bl.w/2,bl.y+bl.h/2,bl.mat==='stone'?'#888':'#a0522d',15);}
+        updateUI();
+      }
+    });
+    pigs.filter(p=>!p.dead).forEach(p=>{
+      let dx=b.x-p.x,dy=b.y-p.y;
+      if(Math.sqrt(dx*dx+dy*dy)<b.r+p.r){
+        let dmg=b.type==='bomb'?2:1;
+        p.hp-=dmg; p.wobble=10;
+        if(p.hp<=0){p.dead=true;score+=500;spawnParticles(p.x,p.y,'#2ecc71',20);}
+        b.vx*=-0.3; b.vy*=-0.5;
+        if(b.type==='bomb'){
+          blocks.forEach(bl2=>{let dd=Math.sqrt((bl2.x+bl2.w/2-b.x)**2+(bl2.y+bl2.h/2-b.y)**2);if(dd<120&&bl2.hp>0){bl2.hp-=2;score+=50;spawnParticles(bl2.x+bl2.w/2,bl2.y+bl2.h/2,'#e67e22',8);}});
+          pigs.filter(p2=>!p2.dead&&p2!==p).forEach(p2=>{let dd=Math.sqrt((p2.x-b.x)**2+(p2.y-b.y)**2);if(dd<130){p2.hp-=2;p2.wobble=15;if(p2.hp<=0){p2.dead=true;score+=500;spawnParticles(p2.x,p2.y,'#2ecc71',20);}}});
+        }
+        birdInFlight=null; b.alive=false;
+        checkNextOrEnd();
+        updateUI();
+      }
+    });
+  }
+  pigs.forEach(p=>{if(p.wobble>0) p.wobble--;});
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.1;p.life-=0.04;});
+  particles=particles.filter(p=>p.life>0);
+}
+
+let waitTimer=0;
+function checkNextOrEnd(){
+  waitTimer=60;
+}
+
+function checkWinLose(){
+  if(waitTimer>0){waitTimer--;if(waitTimer>0)return;}
+  let allDead=pigs.every(p=>p.dead);
+  if(allDead){
+    if(level===1){
+      showMsg('¡Nivel 1 Completado! 🎉','¡Excelente! Los cerdos aprendieron la lección.\nPuntos: '+score,'Siguiente Nivel','nextLevel');
+    } else {
+      showMsg('¡GANASTE! 🏆','¡Destruiste a todos los cerdos!\nPuntuación final: '+score,'Jugar de nuevo','restart');
+    }
+    return;
+  }
+  if(!birdInFlight&&!currentBird&&birdsLeft===0){
+    showMsg('😢 Sin Pájaros','No quedan pájaros. ¡Inténtalo de nuevo!\nPuntos: '+score,'Reintentar','retry');
+  }
+  if(!birdInFlight&&!currentBird&&birdsLeft>0&&fired){
+    setTimeout(()=>{spawnNextBird();fired=false;updateUI();},800);
+  }
+}
+
+function showMsg(title,text,btn,action){
+  document.getElementById('msgTitle').textContent=title;
+  document.getElementById('msgText').textContent=text;
+  document.getElementById('msgBtn').textContent=btn;
+  document.getElementById('msgBox').style.display='block';
+  msgAction=action;
+}
+
+function nextAction(){
+  document.getElementById('msgBox').style.display='none';
+  if(msgAction==='nextLevel'){level=2;score+=birdsLeft*200;loadLevel(2);}
+  else if(msgAction==='restart'){level=1;score=0;loadLevel(1);}
+  else if(msgAction==='retry'){loadLevel(level);}
+}
+
+function drawBackground(){
+  let sky=ctx.createLinearGradient(0,0,0,groundY);
+  sky.addColorStop(0,'#1a6fc4'); sky.addColorStop(1,'#87CEEB');
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,groundY);
+  ctx.fillStyle='rgba(255,255,255,0.8)';
+  [[80,60,120,30],[250,40,90,20],[500,80,110,25],[700,50,80,22]].forEach(([x,y,w,h])=>{
+    ctx.beginPath(); ctx.ellipse(x,y,w,h,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x-30,y+10,w*0.7,h*0.9,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x+30,y+10,w*0.6,h*0.85,0,0,Math.PI*2); ctx.fill();
+  });
+  let grass=ctx.createLinearGradient(0,groundY,0,H);
+  grass.addColorStop(0,'#4a7c00'); grass.addColorStop(1,'#2d5a00');
+  ctx.fillStyle=grass; ctx.fillRect(0,groundY,W,H-groundY);
+  ctx.fillStyle='#5a9200';
+  for(let x=0;x<W;x+=15){
+    let h=6+Math.sin(x*0.3)*3;
+    ctx.fillRect(x,groundY,8,h);
+  }
+  ctx.fillStyle='#3d6e00';
+  ctx.fillRect(0,groundY,W,4);
+}
+
+function drawSlingshot(){
+  let sx=slingshot.x, sy=slingshot.y;
+  ctx.strokeStyle='#5a3a00'; ctx.lineWidth=8; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(sx-15,sy+80); ctx.lineTo(sx,sy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(sx+15,sy+80); ctx.lineTo(sx,sy); ctx.stroke();
+  ctx.strokeStyle='#8B4513'; ctx.lineWidth=4;
+  ctx.beginPath(); ctx.moveTo(sx-15,sy+80); ctx.lineTo(sx+15,sy+80); ctx.stroke();
+  if(dragging&&currentBird){
+    ctx.strokeStyle='rgba(100,60,20,0.7)'; ctx.lineWidth=2;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(currentBird.x,currentBird.y); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function drawBird(b){
+  let x=b.x,y=b.y,r=b.r;
+  if(b.type==='bomb'){
+    ctx.fillStyle='#1a1a1a';
+    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#c0392b';
+    ctx.beginPath(); ctx.arc(x-r*0.3,y-r*0.7,4,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#c0392b'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(x-r*0.3,y-r*0.7); ctx.lineTo(x-r*0.1,y-r*1.2); ctx.stroke();
+    ctx.fillStyle='rgba(255,200,0,0.8)';
+    ctx.beginPath(); ctx.arc(x-r*0.1,y-r*1.2,3,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.6)';
+    ctx.beginPath(); ctx.ellipse(x+r*0.2,y-r*0.3,r*0.25,r*0.15,-0.5,0,Math.PI*2); ctx.fill();
+  } else {
+    ctx.fillStyle='#c0392b';
+    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#e74c3c';
+    ctx.beginPath(); ctx.arc(x-2,y-2,r*0.85,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(x+r*0.2,y-r*0.1,r*0.28,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x-r*0.2,y-r*0.1,r*0.28,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#111';
+    ctx.beginPath(); ctx.arc(x+r*0.25,y-r*0.1,r*0.12,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x-r*0.15,y-r*0.1,r*0.12,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#e67e22';
+    ctx.beginPath(); ctx.moveTo(x-5,y+r*0.3); ctx.lineTo(x+5,y+r*0.3); ctx.lineTo(x,y+r*0.6); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#e74c3c';
+    ctx.beginPath(); ctx.moveTo(x-r*0.3,y-r*1.1); ctx.lineTo(x-r*0.1,y-r*0.7); ctx.lineTo(x+r*0.2,y-r*0.9); ctx.lineTo(x+r*0.1,y-r*0.55); ctx.lineTo(x+r*0.4,y-r*0.75); ctx.lineTo(x,y-r*0.5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.5)';
+    ctx.beginPath(); ctx.ellipse(x+r*0.1,y-r*0.4,r*0.2,r*0.12,-0.3,0,Math.PI*2); ctx.fill();
+  }
+}
+
+function drawPig(p){
+  if(p.dead) return;
+  let x=p.x,y=p.y,r=p.r;
+  let wobOff=p.wobble>0?(Math.random()-0.5)*4:0;
+  x+=wobOff;
+  ctx.fillStyle='#27ae60';
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#2ecc71';
+  ctx.beginPath(); ctx.arc(x-2,y-2,r*0.85,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#1e8449';
+  ctx.beginPath(); ctx.ellipse(x,y+r*0.2,r*0.5,r*0.35,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#154734';
+  ctx.beginPath(); ctx.arc(x-r*0.2,y+r*0.1,r*0.15,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x+r*0.2,y+r*0.1,r*0.15,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.arc(x-r*0.3,y-r*0.15,r*0.3,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x+r*0.3,y-r*0.15,r*0.3,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#111';
+  ctx.beginPath(); ctx.arc(x-r*0.28,y-r*0.15,r*0.14,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x+r*0.32,y-r*0.15,r*0.14,0,Math.PI*2); ctx.fill();
+  if(p.hp<=1){
+    ctx.strokeStyle='#000'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(x-r*0.5,y-r*0.5); ctx.lineTo(x-r*0.2,y-r*0.3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x+r*0.5,y-r*0.5); ctx.lineTo(x+r*0.2,y-r*0.3); ctx.stroke();
+  }
+  ctx.fillStyle='rgba(255,255,100,0.7)';
+  for(let i=0;i<p.hp;i++) ctx.fillRect(p.x-r+i*8,p.y-r-10,6,6);
+}
+
+function drawBlock(b){
+  if(b.hp<=0) return;
+  let g;
+  if(b.mat==='wood'){
+    g=ctx.createLinearGradient(b.x,b.y,b.x+b.w,b.y+b.h);
+    g.addColorStop(0,'#d4a017'); g.addColorStop(1,'#8B4513');
+  } else {
+    g=ctx.createLinearGradient(b.x,b.y,b.x+b.w,b.y+b.h);
+    g.addColorStop(0,'#aaa'); g.addColorStop(1,'#666');
+  }
+  ctx.fillStyle=g; ctx.fillRect(b.x,b.y,b.w,b.h);
+  if(b.mat==='wood'){
+    ctx.strokeStyle='#5a3a00'; ctx.lineWidth=1;
+  } else {
+    ctx.strokeStyle='#444'; ctx.lineWidth=1;
+  }
+  ctx.strokeRect(b.x,b.y,b.w,b.h);
+  if(b.hp < (b.mat==='wood'?3:4)){
+    ctx.strokeStyle='rgba(0,0,0,0.4)'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x+b.w,b.y+b.h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(b.x+b.w,b.y); ctx.lineTo(b.x,b.y+b.h); ctx.stroke();
+  }
+}
+
+function drawTrajectory(){
+  if(trajectory.length<2) return;
+  ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=2; ctx.setLineDash([6,8]);
+  ctx.beginPath(); ctx.moveTo(trajectory[0].x,trajectory[0].y);
+  trajectory.forEach(p=>ctx.lineTo(p.x,p.y));
+  ctx.stroke(); ctx.setLineDash([]);
+  trajectory.forEach((p,i)=>{
+    if(i%4===0){
+      ctx.fillStyle='rgba(255,255,255,0.6)';
+      ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fill();
+    }
+  });
+}
+
+function drawParticles(){
+  particles.forEach(p=>{
+    ctx.globalAlpha=p.life;
+    ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,4,0,Math.PI*2); ctx.fill();
+  });
+  ctx.globalAlpha=1;
+}
+
+function drawBirdsQueue(){
+  let birdTypes=[];
+  for(let i=0;i<birdsLeft;i++) birdTypes.push(level===2&&i%2===0?'bomb':'red');
+  birdTypes.forEach((t,i)=>{
+    ctx.save();
+    let bx=50+i*50, by=groundY+30;
+    ctx.fillStyle=t==='bomb'?'#1a1a1a':'#c0392b';
+    ctx.beginPath(); ctx.arc(bx,by,12,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.5)';
+    ctx.beginPath(); ctx.arc(bx+3,by-3,4,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
 }
 
 function draw(){
- ctx.clearRect(0,0,900,500);
-
- ctx.fillStyle="#6ab04c";
- ctx.fillRect(0,450,900,50);
-
- ctx.strokeStyle="#654321";
- ctx.lineWidth=8;
- ctx.beginPath();
- ctx.moveTo(130,420);
- ctx.lineTo(150,350);
- ctx.stroke();
-
- ctx.fillStyle="red";
- ctx.beginPath();
- ctx.arc(bird.x,bird.y,bird.r,0,Math.PI*2);
- ctx.fill();
-
- pigs.forEach(p=>{
-   ctx.fillStyle="green";
-   ctx.beginPath();
-   ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-   ctx.fill();
- });
+  ctx.clearRect(0,0,W,H);
+  drawBackground();
+  drawTrajectory();
+  drawSlingshot();
+  blocks.forEach(drawBlock);
+  pigs.forEach(drawPig);
+  if(birdInFlight&&birdInFlight.alive){
+    birdInFlight.trail.forEach((t,i)=>{
+      ctx.globalAlpha=(i/birdInFlight.trail.length)*0.3;
+      ctx.fillStyle='#e74c3c';
+      ctx.beginPath(); ctx.arc(t.x,t.y,birdInFlight.r*(i/birdInFlight.trail.length),0,Math.PI*2); ctx.fill();
+    });
+    ctx.globalAlpha=1;
+    drawBird(birdInFlight);
+  }
+  if(currentBird) drawBird(currentBird);
+  drawParticles();
+  drawBirdsQueue();
+  ctx.fillStyle='rgba(0,0,0,0.3)';
+  ctx.fillRect(0,groundY-2,W,3);
 }
 
 function loop(){
- update();
- draw();
- requestAnimationFrame(loop);
+  update();
+  checkWinLose();
+  draw();
+  animId=requestAnimationFrame(loop);
 }
-loop();
+
+window.addEventListener('resize',()=>{resize();if(state!=='menu')loadLevel(level);});
 </script>
 </body>
 </html>
-
